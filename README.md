@@ -60,6 +60,19 @@ data/
 
 `fetch_rounds.py` is idempotent: it stops fetching as soon as it hits a round already present in `data/`.
 
+## Analysis
+
+```bash
+.venv/bin/python analyze_rounds.py
+```
+
+Reads all `data/round_*.json` files and prints the monthly trend, a season-over-season
+comparison (Strokes Gained by category, GIR, fairways, putts, consistency), and the
+best/worst rounds of the last 12 months to the terminal.
+
+`rounds_analysis.html` is a self-contained report built from that data — open it directly
+in a browser (charts, KPI tiles, season comparison, narrative write-up).
+
 ## Cron (daily at 22:00)
 
 ```
