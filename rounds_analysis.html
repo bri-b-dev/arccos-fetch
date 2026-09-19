@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Golf-Formkurve</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page:           #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-1:       #2a78d6; /* 2026 / blau */
+    --series-2:       #eb6834; /* 2025 / orange */
+    --good:           #0ca30c;
+    --card:           #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page:           #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-1:       #3987e5;
+      --series-2:       #d95926;
+      --good:           #0ca30c;
+      --card:           #232322;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --page:           #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --grid:           #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --series-1:       #3987e5;
+    --series-2:       #d95926;
+    --good:           #0ca30c;
+    --card:           #232322;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #f9f9f7; }
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme="light"]), body:not([data-theme="light"]) { background: #0d0d0d; }
+  }
+  .viz-root {
+    background: var(--page);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 32px 20px 64px;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+
+  header.page h1 { font-size: 26px; font-weight: 650; margin: 0 0 6px; letter-spacing: -0.01em; }
+  header.page p.sub { font-size: 14.5px; color: var(--text-secondary); margin: 0 0 28px; line-height: 1.5; max-width: 640px; }
+
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 28px;
+  }
+  .kpi {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 14px 12px;
+  }
+  .kpi .label { font-size: 11.5px; color: var(--text-secondary); margin-bottom: 6px; }
+  .kpi .value { font-size: 21px; font-weight: 650; line-height: 1.1; }
+  .kpi .delta { font-size: 12px; margin-top: 4px; font-weight: 600; }
+  .kpi .delta.good { color: var(--good); }
+  .kpi .delta.flat { color: var(--text-muted); font-weight: 500; }
+
+  section.card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 20px 14px;
+    margin-bottom: 22px;
+  }
+  section.card h2 { font-size: 15px; font-weight: 650; margin: 0 0 2px; }
+  section.card .chart-sub { font-size: 12.5px; color: var(--text-secondary); margin: 0 0 14px; }
+
+  .legend { display: flex; gap: 16px; margin-bottom: 10px; flex-wrap: wrap; }
+  .legend .item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); }
+  .legend .swatch { width: 10px; height: 10px; border-radius: 2px; }
+
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .baseline { stroke: var(--baseline); stroke-width: 1; }
+  .axis-label { fill: var(--text-muted); font-size: 10px; }
+  .tick-label { fill: var(--text-muted); font-size: 9.5px; }
+
+  .tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--text-primary);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    opacity: 0;
+    transition: opacity 0.1s;
+    white-space: nowrap;
+    z-index: 10;
+  }
+  .tooltip .t-title { font-weight: 650; margin-bottom: 3px; }
+  .tooltip .t-row { color: var(--text-secondary); }
+  .chart-holder { position: relative; }
+
+  .hover-dot { r: 5; fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2; opacity: 0; }
+  .hover-x { stroke: var(--baseline); stroke-width: 1; opacity: 0; }
+
+  table.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+    margin-top: 4px;
+  }
+  table.data-table th, table.data-table td {
+    text-align: right;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    font-variant-numeric: tabular-nums;
+  }
+  table.data-table th:first-child, table.data-table td:first-child { text-align: left; font-variant-numeric: normal; }
+  table.data-table thead th { color: var(--text-secondary); font-weight: 600; font-size: 11.5px; }
+  table.data-table tbody tr:last-child td { border-bottom: none; }
+
+  .narrative h2 { font-size: 16px; font-weight: 650; margin: 0 0 8px; }
+  .narrative h3 { font-size: 13.5px; font-weight: 650; margin: 18px 0 6px; }
+  .narrative p, .narrative li { font-size: 13.5px; line-height: 1.6; color: var(--text-secondary); }
+  .narrative strong { color: var(--text-primary); }
+  .narrative ul { margin: 4px 0 4px; padding-left: 20px; }
+  .narrative .foot { font-size: 11.5px; color: var(--text-muted); margin-top: 18px; border-top: 1px solid var(--border); padding-top: 12px; }
+
+  @media (max-width: 640px) {
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="viz-root">
+  <div class="wrap">
+    <header class="page">
+      <h1>Golf-Formkurve — Golfclub Herrnhof</h1>
+      <p class="sub">61 erfasste Runden, Juli 2024 – September 2026 (überwiegend 9-Loch-Trainingsrunden). Werte auf 18 Loch normiert, damit unterschiedliche Rundenlängen vergleichbar sind. SGA = Strokes Gained (relativ zum Ziel-Handicap); negativ = Schläge verloren, positiv = Schläge gewonnen.</p>
+    </header>
+
+    <div class="kpis" id="kpiRow"></div>
+
+    <section class="card">
+      <h2>Score-Trend über die Zeit</h2>
+      <p class="chart-sub">Monatsschnitt „Schläge über Par“, hochgerechnet auf 18 Loch — je niedriger, desto besser. Lücken = golffreie Wintermonate.</p>
+      <div class="chart-holder">
+        <svg id="lineChart" viewBox="0 0 820 300" role="img" aria-label="Monatlicher Trend der Schläge über Par"></svg>
+        <div class="tooltip" id="lineTooltip"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Saisonvergleich nach Spielbereich</h2>
+      <p class="chart-sub">Strokes Gained (SGA) je Kategorie, Saison 2025 vs. 2026 (jeweils April–Oktober). Balken über der Nulllinie = Stärke, darunter = Schwäche.</p>
+      <div class="legend">
+        <div class="item"><span class="swatch" style="background:var(--series-1)"></span>Saison 2026</div>
+        <div class="item"><span class="swatch" style="background:var(--series-2)"></span>Saison 2025</div>
+      </div>
+      <div class="chart-holder">
+        <svg id="barChart" viewBox="0 0 820 320" role="img" aria-label="SGA je Kategorie, Saison 2025 vs 2026"></svg>
+        <div class="tooltip" id="barTooltip"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Kennzahlen im Detail</h2>
+      <table class="data-table">
+        <thead>
+          <tr><th>Kennzahl</th><th>Saison 2025</th><th>Saison 2026</th><th>Veränderung</th></tr>
+        </thead>
+        <tbody id="dataTableBody"></tbody>
+      </table>
+    </section>
+
+    <section class="card narrative">
+      <h2>Einordnung</h2>
+
+      <h3>Gesamtbild</h3>
+      <p>Über die gesamte Historie ist die Verbesserung deutlich: Im ersten erfassten Herbst (2024) lag der Schnitt bei ca. <strong>45–53 Schlägen über Par</strong> (auf 18 Loch), mit SGA-Werten um <strong>−25 bis −31</strong>. Seit Frühjahr 2026 pendelt der Schnitt bei <strong>32–40 Schlägen über Par</strong>, SGA um <strong>−10 bis −16</strong> — ein klarer Aufwärtstrend über zwei Jahre.</p>
+
+      <h3>Saison 2025 → 2026: was besser wurde</h3>
+      <ul>
+        <li><strong>Putting</strong> ist der größte Sprung: SGA von −6.9 auf −2.9. In den letzten Monaten (Juni–September 2026) sogar phasenweise nahezu neutral.</li>
+        <li><strong>Driving</strong> deutlich sauberer: SGA von −4.5 auf −2.3, Fairway-Trefferquote von 42.7 % auf 50.1 % gestiegen.</li>
+        <li><strong>Konsistenz</strong> hat sich verbessert — die Streuung der Rundenergebnisse ist von ±12.0 auf ±8.5 Schläge gesunken, sprich weniger extreme Ausreißer nach unten.</li>
+        <li>GIR (Grüns in Regulation) leicht gestiegen (5.9 % → 8.2 %), bleibt aber auf niedrigem Niveau.</li>
+      </ul>
+
+      <h3>Was unverändert bleibt — die größte Baustelle</h3>
+      <p>Das <strong>Annäherungsspiel (Approach)</strong> zeigt in beiden Saisons praktisch denselben SGA-Wert von <strong>−9.435</strong> (2025) bzw. <strong>−9.444</strong> (2026) — trotz Fortschritten in fast allen anderen Bereichen keine messbare Verbesserung. Das ist mit Abstand die größte konstante Schwachstelle und der Hauptgrund, warum die Scores nicht noch stärker gefallen sind.</p>
+
+      <h3>Was schlechter wurde</h3>
+      <p>Das <strong>kurze Spiel</strong> (Chippen/Bunker) war 2025 eine klare Stärke (SGA +4.1), ist 2026 aber auf fast neutral gefallen (+0.47). Der aktuellste Trend ist noch auffälliger: In den Monaten Juni bis September 2026 liegt die Short-Game-SGA durchgehend im <strong>Negativen (−0.1 bis −4.0)</strong> — aus einer früheren Stärke ist zuletzt eine akute Schwäche geworden.</p>
+
+      <h3>Ausreißer</h3>
+      <p>Schwächste Runde der letzten 12 Monate: <strong>22.07.2026</strong> mit 64 Schlägen über Par/18 (SGA −37.6). Stärkste Runde: <strong>29.07.2026</strong>, nahezu Scratch-Niveau (SGA +0.2) — beide innerhalb weniger Wochen, was die noch hohe Schwankungsbreite von Runde zu Runde zeigt.</p>
+
+      <h3>Fazit</h3>
+      <p>Der Trend über zwei Jahre ist eindeutig positiv: bessere Scores, mehr Konsistenz, spürbare Fortschritte bei Driving und Putting. Der größte Hebel für weitere Verbesserung liegt jetzt beim <strong>Annäherungsspiel</strong> (seit zwei Saisons unverändert schwach) und darin, das <strong>kurze Spiel</strong> wieder auf das Niveau von 2025 zurückzubringen, bevor es sich als neue Schwäche festsetzt.</p>
+
+      <p class="foot">Datenbasis: alle in Arccos gepflegten Runden, ohne gelöschte Runden. SGA-Kategorien sind Pro-Loch-Raten und daher unabhängig von der Rundenlänge vergleichbar; der Gesamtscore "Score/18" ist eine lineare 9→18-Hochrechnung und blendet Ermüdungseffekte auf der zweiten Runden-Hälfte aus. Kleine Stichprobengrößen in einzelnen Monaten (teils n=1) bedeuten entsprechend hohe Schwankung.</p>
+    </section>
+  </div>
+</div>
+
+<script>
+(function() {
+  var monthly = [
+    {"month":"2024-07","n":4,"toPar18":45.0,"sga":-22.90},
+    {"month":"2024-08","n":2,"toPar18":40.0,"sga":-18.36},
+    {"month":"2024-09","n":4,"toPar18":52.85,"sga":-31.35},
+    {"month":"2024-10","n":4,"toPar18":49.0,"sga":-27.20},
+    {"month":"2024-11","n":1,"toPar18":50.4,"sga":-29.16},
+    {"month":"2025-04","n":4,"toPar18":29.0,"sga":-6.90},
+    {"month":"2025-05","n":6,"toPar18":31.70,"sga":-9.62},
+    {"month":"2025-06","n":1,"toPar18":48.0,"sga":-26.00},
+    {"month":"2025-07","n":1,"toPar18":46.0,"sga":-24.00},
+    {"month":"2025-08","n":5,"toPar18":47.44,"sga":-25.71},
+    {"month":"2025-09","n":4,"toPar18":44.4,"sga":-22.83},
+    {"month":"2025-10","n":1,"toPar18":36.0,"sga":-14.76},
+    {"month":"2026-03","n":1,"toPar18":36.0,"sga":-14.40},
+    {"month":"2026-04","n":4,"toPar18":37.5,"sga":-15.60},
+    {"month":"2026-05","n":5,"toPar18":37.45,"sga":-15.18},
+    {"month":"2026-06","n":3,"toPar18":32.0,"sga":-9.93},
+    {"month":"2026-07","n":8,"toPar18":40.13,"sga":-14.98},
+    {"month":"2026-08","n":2,"toPar18":39.0,"sga":-12.40},
+    {"month":"2026-09","n":1,"toPar18":40.0,"sga":-13.40}
+  ];
+
+  var seasons = {
+    "2025": {toPar18:38.68, sga:-16.82, drv:-4.53, app:-9.435, sht:4.10, putt:-6.92, gir:5.88, fw:42.67, putts_h:2.35, updown:4.33, n:22, stdev:12.0},
+    "2026": {toPar18:37.84, sga:-14.19, drv:-2.32, app:-9.444, sht:0.47, putt:-2.88, gir:8.24, fw:50.12, putts_h:2.21, updown:6.47, n:24, stdev:8.5}
+  };
+
+  var css = getComputedStyle(document.querySelector('.viz-root'));
+  var col = {
+    series1: css.getPropertyValue('--series-1').trim(),
+    series2: css.getPropertyValue('--series-2').trim(),
+    grid: css.getPropertyValue('--grid').trim(),
+    baseline: css.getPropertyValue('--baseline').trim(),
+    muted: css.getPropertyValue('--text-muted').trim(),
+    secondary: css.getPropertyValue('--text-secondary').trim(),
+    primary: css.getPropertyValue('--text-primary').trim(),
+    surface: css.getPropertyValue('--surface-1').trim()
+  };
+
+  var svgns = "http://www.w3.org/2000/svg";
+  function el(tag, attrs) {
+    var e = document.createElementNS(svgns, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+
+  // ---------- KPI tiles ----------
+  var kpiData = [
+    {label: "Score/18 (Ø Saison)", value: "37.8", delta: "−0.8 vs. 2025", good: true},
+    {label: "Strokes Gained gesamt", value: "−14.2", delta: "+2.6 vs. 2025", good: true},
+    {label: "Konsistenz (Streuung)", value: "±8.5", delta: "von ±12.0 (2025)", good: true},
+    {label: "Größte Baustelle", value: "Approach", delta: "SGA −9.44, unverändert", good: false}
+  ];
+  var kpiRow = document.getElementById('kpiRow');
+  kpiData.forEach(function(k) {
+    var tile = document.createElement('div');
+    tile.className = 'kpi';
+    tile.innerHTML = '<div class="label">' + k.label + '</div>' +
+      '<div class="value">' + k.value + '</div>' +
+      '<div class="delta ' + (k.good ? 'good' : 'flat') + '">' + k.delta + '</div>';
+    kpiRow.appendChild(tile);
+  });
+
+  // ---------- Line chart ----------
+  (function() {
+    var svg = document.getElementById('lineChart');
+    var tooltip = document.getElementById('lineTooltip');
+    var W = 820, H = 300;
+    var padL = 40, padR = 16, padT = 16, padB = 34;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+
+    var yMin = 0, yMax = 60;
+    var n = monthly.length;
+    var xStep = plotW / (n - 1);
+
+    function xPos(i) { return padL + i * xStep; }
+    function yPos(v) { return padT + (1 - (v - yMin) / (yMax - yMin)) * plotH; }
+
+    [0, 15, 30, 45, 60].forEach(function(v) {
+      var y = yPos(v);
+      svg.appendChild(el('line', {x1: padL, x2: W - padR, y1: y, y2: y, class: 'gridline'}));
+      var t = el('text', {x: padL - 8, y: y + 3, class: 'tick-label', 'text-anchor': 'end'});
+      t.textContent = v;
+      svg.appendChild(t);
+    });
+
+    monthly.forEach(function(m, i) {
+      if (i % 2 === 0 || i === n - 1) {
+        var t = el('text', {x: xPos(i), y: H - padB + 16, class: 'tick-label', 'text-anchor': 'middle'});
+        var parts = m.month.split('-');
+        t.textContent = parts[1] + '/' + parts[0].slice(2);
+        svg.appendChild(t);
+      }
+    });
+
+    var d = monthly.map(function(m, i) {
+      return (i === 0 ? 'M' : 'L') + xPos(i).toFixed(1) + ',' + yPos(m.toPar18).toFixed(1);
+    }).join(' ');
+    svg.appendChild(el('path', {d: d, fill: 'none', stroke: col.series1, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round'}));
+
+    monthly.forEach(function(m, i) {
+      var dot = el('circle', {cx: xPos(i), cy: yPos(m.toPar18), r: 3.5, fill: col.series1, stroke: col.surface, 'stroke-width': 1.5});
+      svg.appendChild(dot);
+    });
+
+    var last = monthly[n - 1];
+    var lt = el('text', {x: xPos(n - 1), y: yPos(last.toPar18) - 10, class: 'tick-label', 'text-anchor': 'end', fill: col.primary, 'font-weight': 600});
+    lt.textContent = last.toPar18.toFixed(0);
+    svg.appendChild(lt);
+
+    var hoverX = el('line', {y1: padT, y2: H - padB, class: 'hover-x'});
+    svg.appendChild(hoverX);
+    var hoverDot = el('circle', {class: 'hover-dot'});
+    svg.appendChild(hoverDot);
+
+    var hitArea = el('rect', {x: padL, y: padT, width: plotW, height: plotH, fill: 'transparent'});
+    svg.appendChild(hitArea);
+
+    function showTooltip(i) {
+      var m = monthly[i];
+      var x = xPos(i), y = yPos(m.toPar18);
+      hoverX.setAttribute('x1', x); hoverX.setAttribute('x2', x); hoverX.setAttribute('opacity', 1);
+      hoverDot.setAttribute('cx', x); hoverDot.setAttribute('cy', y); hoverDot.setAttribute('opacity', 1);
+      var parts = m.month.split('-');
+      tooltip.innerHTML = '<div class="t-title">' + parts[1] + '/' + parts[0] + '</div>' +
+        '<div class="t-row">Ø Schläge über Par/18: <strong style="color:' + col.primary + '">' + m.toPar18.toFixed(1) + '</strong></div>' +
+        '<div class="t-row">SGA gesamt: ' + m.sga.toFixed(1) + '</div>' +
+        '<div class="t-row">' + m.n + ' Runde' + (m.n > 1 ? 'n' : '') + '</div>';
+      tooltip.style.opacity = 1;
+      var rect = svg.getBoundingClientRect();
+      var scale = rect.width / W;
+      var left = x * scale;
+      var top = y * scale;
+      tooltip.style.left = Math.min(left + 10, rect.width - 140) + 'px';
+      tooltip.style.top = Math.max(top - 50, 0) + 'px';
+    }
+    function hideTooltip() {
+      hoverX.setAttribute('opacity', 0);
+      hoverDot.setAttribute('opacity', 0);
+      tooltip.style.opacity = 0;
+    }
+    hitArea.addEventListener('mousemove', function(evt) {
+      var rect = svg.getBoundingClientRect();
+      var mx = (evt.clientX - rect.left) / rect.width * W;
+      var i = Math.round((mx - padL) / xStep);
+      i = Math.max(0, Math.min(n - 1, i));
+      showTooltip(i);
+    });
+    hitArea.addEventListener('mouseleave', hideTooltip);
+  })();
+
+  // ---------- Bar chart ----------
+  (function() {
+    var svg = document.getElementById('barChart');
+    var tooltip = document.getElementById('barTooltip');
+    var W = 820, H = 320;
+    var padL = 40, padR = 16;
+    var padT = 16, padB = 30;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+
+    var cats = [
+      {key: 'drv', label: 'Driving', decimals: 2},
+      {key: 'app', label: 'Approach', decimals: 3},
+      {key: 'sht', label: 'Short Game', decimals: 2},
+      {key: 'putt', label: 'Putting', decimals: 2}
+    ];
+
+    var yMin = -12, yMax = 6;
+    function yPos(v) { return padT + (1 - (v - yMin) / (yMax - yMin)) * plotH; }
+
+    [-12, -9, -6, -3, 0, 3, 6].forEach(function(v) {
+      var y = yPos(v);
+      svg.appendChild(el('line', {x1: padL, x2: W - padR, y1: y, y2: y, class: v === 0 ? 'baseline' : 'gridline'}));
+      var t = el('text', {x: padL - 8, y: y + 3, class: 'tick-label', 'text-anchor': 'end'});
+      t.textContent = v;
+      svg.appendChild(t);
+    });
+
+    var groupW = plotW / cats.length;
+    var barW = 26, gap = 6;
+
+    cats.forEach(function(c, i) {
+      var groupCx = padL + groupW * (i + 0.5);
+      var v26 = seasons["2026"][c.key];
+      var v25 = seasons["2025"][c.key];
+
+      var x1 = groupCx - gap / 2 - barW;
+      var x2 = groupCx + gap / 2;
+
+      [{x: x1, v: v26, season: '2026', color: col.series1}, {x: x2, v: v25, season: '2025', color: col.series2}].forEach(function(bar) {
+        var y0 = yPos(0), y1 = yPos(bar.v);
+        var top = Math.min(y0, y1), height = Math.abs(y1 - y0);
+        var rectEl = el('rect', {
+          x: bar.x, y: top, width: barW, height: Math.max(height, 1),
+          fill: bar.color, rx: 4, ry: 4
+        });
+        svg.appendChild(rectEl);
+
+        rectEl.addEventListener('mousemove', function() {
+          tooltip.innerHTML = '<div class="t-title">' + c.label + ' — Saison ' + bar.season + '</div>' +
+            '<div class="t-row">SGA: <strong style="color:' + col.primary + '">' + bar.v.toFixed(c.decimals) + '</strong></div>';
+          tooltip.style.opacity = 1;
+          var rect = svg.getBoundingClientRect();
+          var scale = rect.width / W;
+          tooltip.style.left = Math.min(bar.x * scale + 10, rect.width - 150) + 'px';
+          tooltip.style.top = Math.max(top * scale - 45, 0) + 'px';
+        });
+        rectEl.addEventListener('mouseleave', function() { tooltip.style.opacity = 0; });
+      });
+
+      var lbl = el('text', {x: groupCx, y: H - padB + 16, class: 'tick-label', 'text-anchor': 'middle'});
+      lbl.textContent = c.label;
+      svg.appendChild(lbl);
+    });
+  })();
+
+  // ---------- Data table ----------
+  var rows = [
+    {label: 'Score über Par (norm. 18 Loch)', k: 'toPar18', fmt: 1, invertGood: true},
+    {label: 'Strokes Gained gesamt', k: 'sga', fmt: 2, invertGood: false},
+    {label: 'SGA Driving', k: 'drv', fmt: 2, invertGood: false},
+    {label: 'SGA Approach', k: 'app', fmt: 3, invertGood: false},
+    {label: 'SGA Short Game', k: 'sht', fmt: 2, invertGood: false},
+    {label: 'SGA Putting', k: 'putt', fmt: 2, invertGood: false},
+    {label: 'GIR %', k: 'gir', fmt: 1, invertGood: false},
+    {label: 'Fairways getroffen %', k: 'fw', fmt: 1, invertGood: false},
+    {label: 'Putts / Loch', k: 'putts_h', fmt: 2, invertGood: true},
+    {label: 'Up & Down %', k: 'updown', fmt: 1, invertGood: false},
+    {label: 'Streuung (Std.-Abw. Score)', k: 'stdev', fmt: 1, invertGood: true},
+    {label: 'Anzahl Runden', k: 'n', fmt: 0, invertGood: false}
+  ];
+  var tbody = document.getElementById('dataTableBody');
+  rows.forEach(function(r) {
+    var v25 = seasons["2025"][r.k], v26 = seasons["2026"][r.k];
+    var diff = v26 - v25;
+    var better = r.invertGood ? diff < 0 : diff > 0;
+    var sign = diff > 0 ? '+' : '';
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + r.label + '</td>' +
+      '<td>' + v25.toFixed(r.fmt) + '</td>' +
+      '<td>' + v26.toFixed(r.fmt) + '</td>' +
+      '<td style="color:' + (Math.abs(diff) < (r.fmt === 3 ? 0.005 : 0.05) ? col.muted : (better ? col.series1 : col.secondary)) + '">' +
+      (Math.abs(diff) < (r.fmt === 3 ? 0.005 : 0.05) ? '≈ 0' : sign + diff.toFixed(r.fmt)) + '</td>';
+    tbody.appendChild(tr);
+  });
+})();
+</script>
+</body>
+</html>
